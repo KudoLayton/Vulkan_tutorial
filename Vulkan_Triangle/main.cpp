@@ -12,10 +12,12 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <vector>
+#include <map>
+#include <optional>
 
 class HelloTriangleApplication {
 public:
-	HelloTriangleApplication() : window(nullptr), instance(nullptr) {}
+	HelloTriangleApplication() : window(nullptr), instance(nullptr), physicalDevice(VK_NULL_HANDLE) {}
 	void run() {
 		initWindow();
 		initVulkan();
@@ -26,6 +28,7 @@ public:
 private:
 	GLFWwindow* window;
 	VkInstance instance;
+	VkPhysicalDevice physicalDevice;
 	const uint32_t WIDTH = 800;
 	const uint32_t HEIGHT = 600;
 
@@ -50,6 +53,7 @@ private:
 
 	void initVulkan() {
 		createInstance();
+		pickPhysicialDevice();
 	}
 
 	void mainLoop() {
@@ -116,6 +120,45 @@ private:
 		}
 	}
 
+	void pickPhysicialDevice() {
+		uint32_t deviceCount = 0;
+		vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+		if (deviceCount == 0) {
+			throw std::runtime_error("failed to find GPUs with Vulkan support!");
+		}
+
+		std::vector<VkPhysicalDevice> devices(deviceCount);
+		vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+		for (const auto& device : devices) {
+			if (isDeviceSuitable(device)) {
+				physicalDevice = device;
+				break;
+			}
+		}
+
+		if (physicalDevice == VK_NULL_HANDLE)
+			throw std::runtime_error("There is no suitable physical GPU device");
+	}
+
+	bool isDeviceSuitable(VkPhysicalDevice device) {
+		QueueFamilyIndices indices = findQueueFamilies(device);
+		return indices.isComplete();
+
+		//Check whether or not the GPU is integrated gpu (such as intel HD Graphics)
+		/*
+		VkPhysicalDeviceProperties deviceProperties;
+		VkPhysicalDeviceFeatures deviceFeatures;
+
+		vkGetPhysicalDeviceProperties(device, &deviceProperties);
+		vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+
+		return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU &&
+			deviceFeatures.geometryShader;
+		*/
+	}
+
 	bool checkValidationLayerSupport() {
 		uint32_t layerCount;
 		vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
@@ -139,6 +182,31 @@ private:
 		return true;
 	}
 
+	struct QueueFamilyIndices {
+		std::optional<uint32_t> graphicsFamily;
+
+		bool isComplete() {
+			return graphicsFamily.has_value();
+		}
+	};
+
+	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
+		QueueFamilyIndices indices;
+		uint32_t queueFamilyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+		std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+		int i = 0;
+		for (const auto& queueFamily : queueFamilies) {
+			if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+				indices.graphicsFamily = i;
+			}
+			++i;
+		}
+		return indices;
+	}
 };
 
 int main() {
